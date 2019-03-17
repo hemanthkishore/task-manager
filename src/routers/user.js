@@ -1,5 +1,7 @@
 const express = require('express')
 const User = require('../models/user')
+const auth = require('../middleware/authentication')
+
 const router = new express.Router()
 
 // cretas a new user in the database
@@ -8,21 +10,29 @@ router.post('/users', async (req, res)=>{
 
     try {
         await user.save()
-        res.status(201).send(user)
+        const token = await user.generateAuthToken()
+        res.status(201).send({user, token})
     } catch (error) {
         res.status(400).send(error)
     }
 })
 
-// returns all the users in the database
-router.get('/users', async (req, res)=>{
-
+// route for user login
+router.post('/users/login', async (req, res) => {
     try {
-        const users = await User.find({})
-        res.status(201).send(users)
+        const user = await User.findByCredentials(req.body.email, req.body.password)
+        const token = await user.generateAuthToken()
+        res.status(201).send({user, token})
     } catch (error) {
         res.status(400).send(error)
     }
+
+})
+
+
+// returns all the users in the database
+router.get('/users/me', auth, async (req, res)=>{
+    res.send(req.user)
 })
 
 // returns the users with the specific id
@@ -50,9 +60,11 @@ router.patch('/users/:id', async (req, res)=>{
     if(!isValidUpdate) {
         return res.status(400).send({error: 'Invalid Updates!'})
     }
-
     try {
-        const user = await User.findByIdAndUpdate(_id, req.body, {new: true, runValidators: true})
+        const user = await User.findById(_id)
+        update.forEach((update)=> user[update] = req.body[update])
+        await user.save()
+
         if(!user) {
             return res.status(404).send()
         }
